@@ -3,6 +3,7 @@ package ru.itmo.mse.asurkis;
 import com.google.protobuf.CodedOutputStream;
 import ru.itmo.mse.asurkis.Messages.ArrayMessage;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -37,12 +38,12 @@ public class AsyncServer {
                 Future<AsynchronousSocketChannel> future = serverSocketChannel.accept();
                 AsynchronousSocketChannel channel = future.get();
                 Client client = new Client(channel);
-                client.start();
+                client.startReading();
             }
         }
     }
 
-    private class Client {
+    private class Client implements Closeable {
         private static final HeaderHandler HEADER_HANDLER = new HeaderHandler();
         private static final BodyHandler BODY_HANDLER = new BodyHandler();
         private static final ResponseHandler RESPONSE_HANDLER = new ResponseHandler();
@@ -56,72 +57,32 @@ public class AsyncServer {
             this.channel = channel;
         }
 
-        private void start() {
+        private void startReading() {
             buffer.clear();
             buffer.limit(4);
-            scheduleHead();
-        }
-
-        private void finish() throws IOException {
-            channel.close();
-        }
-
-        private void scheduleHead() {
             channel.read(buffer, this, HEADER_HANDLER);
         }
 
-        private void scheduleBody() {
-            channel.read(buffer, this, BODY_HANDLER);
-        }
-
-        private void scheduleResponse() {
-            channel.write(buffer, this, RESPONSE_HANDLER);
+        @Override
+        public void close() throws IOException {
+            channel.close();
         }
 
         private void handleHead(int bytesRead) throws IOException {
-            if (bytesRead == 0) {
-                finish();
+            if (bytesRead == -1) {
+                close();
                 return;
             }
-
-            if (buffer.position() < buffer.limit()) {
-                scheduleHead();
-                return;
-            }
+            assert buffer.remaining() == 0;
 
             buffer.flip();
             int size = buffer.getInt();
-
             buffer = ServerUtil.ensureLimit(buffer, size);
-            scheduleBody();
+            channel.read(buffer, this, BODY_HANDLER);
         }
 
-        private void handleBody(int bytesRead) throws IOException {
-            if (bytesRead <= 0) {
-                finish();
-                throw new RuntimeException("Protocol violation");
-            }
-
-            if (buffer.position() < buffer.limit()) {
-                scheduleBody();
-                return;
-            }
-
+        private void handleBody() throws IOException {
             workerPool.submit(this::processRequest);
-        }
-
-        private void handleResponse(int bytesWritten) throws IOException {
-            if (bytesWritten <= 0) {
-                finish();
-                throw new RuntimeException("Protocol violation");
-            }
-
-            if (buffer.position() < buffer.limit()) {
-                scheduleBody();
-                return;
-            }
-
-            start();
         }
 
         private void processRequest() {
@@ -137,7 +98,7 @@ public class AsyncServer {
                 cos.flush();
 
                 buffer.flip();
-                scheduleResponse();
+                channel.write(buffer, this, RESPONSE_HANDLER);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -165,7 +126,8 @@ public class AsyncServer {
         @Override
         public void completed(Integer bytesRead, Client client) {
             try {
-                client.handleBody(bytesRead);
+                assert client.buffer.remaining() == 0;
+                client.handleBody();
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -181,11 +143,8 @@ public class AsyncServer {
     private static class ResponseHandler implements CompletionHandler<Integer, Client> {
         @Override
         public void completed(Integer bytesWritten, Client client) {
-            try {
-                client.handleResponse(bytesWritten);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
+            assert client.buffer.remaining() == 0;
+            client.startReading();
         }
 
         @Override

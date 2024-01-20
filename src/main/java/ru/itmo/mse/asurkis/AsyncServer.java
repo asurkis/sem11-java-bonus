@@ -38,7 +38,7 @@ public class AsyncServer {
                 Future<AsynchronousSocketChannel> future = serverSocketChannel.accept();
                 AsynchronousSocketChannel channel = future.get();
                 Client client = new Client(channel);
-                client.startReading();
+                client.start();
             }
         }
     }
@@ -57,7 +57,7 @@ public class AsyncServer {
             this.channel = channel;
         }
 
-        private void startReading() {
+        private void start() {
             buffer.clear();
             buffer.limit(4);
             channel.read(buffer, this, HEADER_HANDLER);
@@ -144,7 +144,7 @@ public class AsyncServer {
         @Override
         public void completed(Integer bytesWritten, Client client) {
             assert client.buffer.remaining() == 0;
-            client.startReading();
+            client.start();
         }
 
         @Override

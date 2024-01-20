@@ -159,9 +159,11 @@ public class NonBlockingServer {
         }
 
         private void handleRead() throws IOException {
-            channel.read(buffer);
-            if (buffer.remaining() == 0)
+            if (channel.read(buffer) == -1) {
+                close();
+            } else if (buffer.remaining() == 0) {
                 nextOp.run();
+            }
         }
 
         private void handleWrite() throws IOException {

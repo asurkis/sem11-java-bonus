@@ -1,5 +1,9 @@
 package ru.itmo.mse.asurkis;
 
+import ru.itmo.mse.asurkis.Messages.ArrayMessage;
+
+import java.nio.ByteBuffer;
+
 /**
  * Общий код, не зависящий от реализации сервера
  */
@@ -9,6 +13,34 @@ public class ServerUtil {
     public static int findCapacity(int currCapacity, int requiredSize) {
         while (currCapacity < requiredSize) currCapacity *= 2;
         return currCapacity;
+    }
+
+    public static ByteBuffer ensureLimit(ByteBuffer buf, int limit) {
+        int newCapacity = findCapacity(buf.capacity(), limit);
+        if (newCapacity == buf.capacity()) {
+            buf.clear();
+        } else {
+            buf = ByteBuffer.allocate(newCapacity);
+        }
+        buf.limit(limit);
+        return buf;
+    }
+
+    /**
+     * Распаковать массив, прочитать и упаковать.
+     * Все эти операции происходят в памяти, без ввода-вывода,
+     * поэтому будут выполняться в worker'ах.
+     */
+    public static ArrayMessage processPayload(ArrayMessage payload) {
+        int[] arr = new int[payload.getXCount()];
+        for (int i = 0; i < arr.length; i++)
+            arr[i] = payload.getX(i);
+
+        sortInPlace(arr);
+
+        ArrayMessage.Builder builder = ArrayMessage.newBuilder();
+        for (int x : arr) builder.addX(x);
+        return builder.build();
     }
 
     /**

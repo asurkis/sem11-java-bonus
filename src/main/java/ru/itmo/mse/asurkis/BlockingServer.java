@@ -40,8 +40,10 @@ public class BlockingServer {
         try (
                 InputStream inputStream = socket.getInputStream();
                 OutputStream outputStream = socket.getOutputStream();
-                DataInputStream dis = new DataInputStream(inputStream);
-                DataOutputStream dos = new DataOutputStream(outputStream)
+                BufferedInputStream bufferedInputStream = new BufferedInputStream(inputStream);
+                BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(outputStream);
+                DataInputStream dis = new DataInputStream(bufferedInputStream);
+                DataOutputStream dos = new DataOutputStream(bufferedOutputStream)
         ) {
             while (true) {
                 int size;
@@ -67,17 +69,7 @@ public class BlockingServer {
     private void processAndScheduleResponse(byte[] buf, DataOutputStream dos, ExecutorService responder) {
         try {
             ArrayMessage payload = ArrayMessage.parseFrom(buf);
-
-            int[] arr = new int[payload.getXCount()];
-            for (int i = 0; i < arr.length; i++)
-                arr[i] = payload.getX(i);
-
-            ServerUtil.sortInPlace(arr);
-
-            ArrayMessage.Builder builder = ArrayMessage.newBuilder();
-            for (int x : arr) builder.addX(x);
-            payload = builder.build();
-
+            payload = ServerUtil.processPayload(payload);
             byte[] responseBuf = payload.toByteArray();
             responder.submit(() -> respond(responseBuf, dos));
         } catch (InvalidProtocolBufferException e) {
@@ -89,6 +81,7 @@ public class BlockingServer {
         try {
             dos.writeInt(buf.length);
             dos.write(buf);
+            dos.flush();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

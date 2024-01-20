@@ -1,5 +1,8 @@
 package ru.itmo.mse.asurkis;
 
+import com.google.protobuf.CodedOutputStream;
+import ru.itmo.mse.asurkis.Messages.ArrayMessage;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -10,7 +13,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.function.Consumer;
 
 public class AsyncServer {
     public static void main(String[] args) throws IOException, ExecutionException, InterruptedException {
@@ -27,20 +29,16 @@ public class AsyncServer {
         workerPool = Executors.newFixedThreadPool(nProcessors);
     }
 
-    private AsynchronousServerSocketChannel serverSocketChannel;
-
     private void start() throws IOException, ExecutionException, InterruptedException {
-        serverSocketChannel = AsynchronousServerSocketChannel.open();
-        serverSocketChannel.bind(new InetSocketAddress(port));
-        scheduleAccept();
-    }
+        try (AsynchronousServerSocketChannel serverSocketChannel = AsynchronousServerSocketChannel.open()) {
+            serverSocketChannel.bind(new InetSocketAddress(port));
 
-    private void scheduleAccept() throws ExecutionException, InterruptedException {
-        while (true) {
-            Future<AsynchronousSocketChannel> future = serverSocketChannel.accept();
-            AsynchronousSocketChannel channel = future.get();
-            Client client = new Client(channel);
-            client.start();
+            while (true) {
+                Future<AsynchronousSocketChannel> future = serverSocketChannel.accept();
+                AsynchronousSocketChannel channel = future.get();
+                Client client = new Client(channel);
+                client.start();
+            }
         }
     }
 
@@ -50,8 +48,9 @@ public class AsyncServer {
         private static final ResponseHandler RESPONSE_HANDLER = new ResponseHandler();
 
         private final AsynchronousSocketChannel channel;
+
         // Выделим заранее память, будем увеличивать количество, если понадобится
-        private ByteBuffer buffer = ByteBuffer.allocate(1024);
+        private ByteBuffer buffer = ByteBuffer.allocate(ServerUtil.START_CAPACITY_BYTES);
 
         private Client(AsynchronousSocketChannel channel) {
             this.channel = channel;
@@ -91,23 +90,14 @@ public class AsyncServer {
             }
 
             buffer.flip();
-            int arrayLength = buffer.getInt();
+            int size = buffer.getInt();
 
-            int newCapacity = buffer.capacity();
-            int newLimit = 4 + 4 * arrayLength;
-            while (newCapacity < newLimit)
-                newCapacity *= 2;
-            if (newCapacity != buffer.capacity())
-                buffer = ByteBuffer.allocate(newCapacity);
-
-            buffer.clear();
-            buffer.position(4);
-            buffer.limit(newLimit);
+            buffer = ServerUtil.ensureLimit(buffer, size);
             scheduleBody();
         }
 
         private void handleBody(int bytesRead) throws IOException {
-            if (bytesRead == 0) {
+            if (bytesRead <= 0) {
                 finish();
                 throw new RuntimeException("Protocol violation");
             }
@@ -121,7 +111,7 @@ public class AsyncServer {
         }
 
         private void handleResponse(int bytesWritten) throws IOException {
-            if (bytesWritten == 0) {
+            if (bytesWritten <= 0) {
                 finish();
                 throw new RuntimeException("Protocol violation");
             }
@@ -135,18 +125,22 @@ public class AsyncServer {
         }
 
         private void processRequest() {
-            buffer.flip();
-            int[] arr = new int[buffer.limit() / 4];
-            for (int i = 0; i < arr.length; i++)
-                arr[i] = buffer.getInt();
+            try {
+                buffer.flip();
+                ArrayMessage payload = ArrayMessage.parseFrom(buffer);
+                payload = ServerUtil.processPayload(payload);
 
-            ServerUtil.sortInPlace(arr);
-            buffer.clear();
-            buffer.putInt(arr.length);
-            for (int x : arr) buffer.putInt(x);
-            buffer.flip();
+                buffer = ServerUtil.ensureLimit(buffer, 4 + payload.getSerializedSize());
+                buffer.putInt(payload.getSerializedSize());
+                CodedOutputStream cos = CodedOutputStream.newInstance(buffer);
+                payload.writeTo(cos);
+                cos.flush();
 
-            scheduleResponse();
+                buffer.flip();
+                scheduleResponse();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         }
     }
 

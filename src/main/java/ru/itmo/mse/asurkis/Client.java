@@ -24,13 +24,16 @@ public class Client {
                 Socket socket = new Socket("localhost", 4444);
                 InputStream inputStream = socket.getInputStream();
                 OutputStream outputStream = socket.getOutputStream();
-                DataInputStream dis = new DataInputStream(inputStream);
-                DataOutputStream dos = new DataOutputStream(outputStream)
+                BufferedInputStream bufferedInputStream = new BufferedInputStream(inputStream);
+                BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(outputStream);
+                DataInputStream dis = new DataInputStream(bufferedInputStream);
+                DataOutputStream dos = new DataOutputStream(bufferedOutputStream)
         ) {
             start = System.currentTimeMillis();
             for (int i = 0; i < nRequests; i++) {
                 dos.writeInt(requestBytes.length);
                 dos.write(requestBytes);
+                dos.flush();
 
                 int responseSize = dis.readInt();
                 assert responseSize == responseBytes.length;

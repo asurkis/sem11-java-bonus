@@ -11,22 +11,24 @@ public class BlockingServer {
         new BlockingServer(4444).start();
     }
 
-    private final ServerSocket serverSocket;
     private final ExecutorService workerPool;
+    private final int port;
 
     private BlockingServer(int port) throws IOException {
-        serverSocket = new ServerSocket(port);
+        this.port = port;
         Runtime runtime = Runtime.getRuntime();
         int nProcessors = runtime.availableProcessors();
         workerPool = Executors.newFixedThreadPool(nProcessors);
     }
 
     private void start() throws IOException {
-        while (true) {
-            Socket socket = serverSocket.accept();
-            Thread thread = new Thread(() -> serveClientWrap(socket));
-            thread.setDaemon(true);
-            thread.start();
+        try (ServerSocket serverSocket = new ServerSocket(port)) {
+            while (true) {
+                Socket socket = serverSocket.accept();
+                Thread thread = new Thread(() -> serveClientWrap(socket));
+                thread.setDaemon(true);
+                thread.start();
+            }
         }
     }
 

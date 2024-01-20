@@ -1,5 +1,8 @@
 package ru.itmo.mse.asurkis;
 
+import com.google.protobuf.InvalidProtocolBufferException;
+import ru.itmo.mse.asurkis.Messages.ArrayMessage;
+
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -41,19 +44,18 @@ public class BlockingServer {
                 DataOutputStream dos = new DataOutputStream(outputStream)
         ) {
             while (true) {
-                int n;
+                int size;
                 try {
-                    n = dis.readInt();
+                    size = dis.readInt();
                 } catch (EOFException e) {
                     break;
                 }
 
-                // Если за размером сообщения не идёт полный массив, то это ошибка протокола,
-                // поэтому не обрабатываем отдельно EOF
-                int[] payload = new int[n];
-                for (int i = 0; i < n; i++) payload[i] = dis.readInt();
+                byte[] buf = new byte[size];
+                for (int pos = 0; pos < size;)
+                    pos += dis.read(buf, pos, size - pos);
 
-                workerPool.submit(() -> processAndScheduleResponse(payload, dos, responder));
+                workerPool.submit(() -> processAndScheduleResponse(buf, dos, responder));
             }
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -62,15 +64,31 @@ public class BlockingServer {
         }
     }
 
-    private void processAndScheduleResponse(int[] payload, DataOutputStream dos, ExecutorService responder) {
-        ServerUtil.sortInPlace(payload);
-        responder.submit(() -> respond(payload, dos));
+    private void processAndScheduleResponse(byte[] buf, DataOutputStream dos, ExecutorService responder) {
+        try {
+            ArrayMessage payload = ArrayMessage.parseFrom(buf);
+
+            int[] arr = new int[payload.getXCount()];
+            for (int i = 0; i < arr.length; i++)
+                arr[i] = payload.getX(i);
+
+            ServerUtil.sortInPlace(arr);
+
+            ArrayMessage.Builder builder = ArrayMessage.newBuilder();
+            for (int x : arr) builder.addX(x);
+            payload = builder.build();
+
+            byte[] responseBuf = payload.toByteArray();
+            responder.submit(() -> respond(responseBuf, dos));
+        } catch (InvalidProtocolBufferException e) {
+            throw new RuntimeException(e);
+        }
     }
 
-    private void respond(int[] payload, DataOutputStream dos) {
+    private void respond(byte[] buf, DataOutputStream dos) {
         try {
-            dos.writeInt(payload.length);
-            for (int x : payload) dos.writeInt(x);
+            dos.writeInt(buf.length);
+            dos.write(buf);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

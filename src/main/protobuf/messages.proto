@@ -1,0 +1,7 @@
+syntax = "proto2";
+
+option java_package = "ru.itmo.mse.asurkis";
+
+message ArrayMessage {
+  repeated int32 x = 1;
+}

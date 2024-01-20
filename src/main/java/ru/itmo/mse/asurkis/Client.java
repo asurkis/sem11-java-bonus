@@ -1,5 +1,7 @@
 package ru.itmo.mse.asurkis;
 
+import ru.itmo.mse.asurkis.Messages.ArrayMessage;
+
 import java.io.*;
 import java.net.Socket;
 
@@ -10,6 +12,14 @@ public class Client {
 
     private void execute(int payloadSize, long delayMs, int nRequests) throws InterruptedException {
         long start, finish;
+
+        ArrayMessage.Builder requestBuilder = ArrayMessage.newBuilder();
+        for (int x = payloadSize; x > 0; x--)
+            requestBuilder.addX(x);
+        ArrayMessage requestMessage = requestBuilder.build();
+        byte[] requestBytes = requestMessage.toByteArray();
+        byte[] responseBytes = new byte[requestBytes.length];
+
         try (
                 Socket socket = new Socket("localhost", 4444);
                 InputStream inputStream = socket.getInputStream();
@@ -19,21 +29,24 @@ public class Client {
         ) {
             start = System.currentTimeMillis();
             for (int i = 0; i < nRequests; i++) {
-                dos.writeInt(payloadSize);
-                for (int x = payloadSize; x > 0; x--) dos.writeInt(x);
+                dos.writeInt(requestBytes.length);
+                dos.write(requestBytes);
 
-                int n = dis.readInt();
-                assert n == payloadSize;
-                for (int j = 1; j <= payloadSize; j++) {
-                    int x = dis.readInt();
-                    assert x == j;
-                }
+                int responseSize = dis.readInt();
+                assert responseSize == responseBytes.length;
+                for (int pos = 0; pos < responseSize; )
+                    pos += dis.read(responseBytes, pos, responseSize - pos);
+
+                ArrayMessage responseMessage = ArrayMessage.parseFrom(responseBytes);
+                assert responseMessage.getXCount() == payloadSize;
+                for (int j = 0; j < payloadSize; j++)
+                    assert responseMessage.getX(j) == j + 1;
             }
             finish = System.currentTimeMillis();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        
+
         System.out.println(finish - start);
         System.out.println((double) (finish - start) / nRequests);
         System.out.println((double) (finish - start) / nRequests - delayMs);

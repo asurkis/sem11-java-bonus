@@ -4,6 +4,13 @@ package ru.itmo.mse.asurkis;
  * Общий код, не зависящий от реализации сервера
  */
 public class ServerUtil {
+    public static final int START_CAPACITY_BYTES = 1024;
+
+    public static int findCapacity(int currCapacity, int requiredSize) {
+        while (currCapacity < requiredSize) currCapacity *= 2;
+        return currCapacity;
+    }
+
     /**
      * Отсортировать массив, который пришёл по сети, за квадратичное время
      */

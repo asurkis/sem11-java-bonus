@@ -10,6 +10,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.function.Consumer;
 
 public class AsyncServer {
     public static void main(String[] args) throws IOException, ExecutionException, InterruptedException {
@@ -39,7 +40,7 @@ public class AsyncServer {
             Future<AsynchronousSocketChannel> future = serverSocketChannel.accept();
             AsynchronousSocketChannel channel = future.get();
             Client client = new Client(channel);
-            client.scheduleHead();
+            client.start();
         }
     }
 
@@ -54,7 +55,12 @@ public class AsyncServer {
 
         private Client(AsynchronousSocketChannel channel) {
             this.channel = channel;
+        }
+
+        private void start() {
+            buffer.clear();
             buffer.limit(4);
+            scheduleHead();
         }
 
         private void finish() throws IOException {
@@ -125,9 +131,7 @@ public class AsyncServer {
                 return;
             }
 
-            buffer.clear();
-            buffer.limit(4);
-            scheduleHead();
+            start();
         }
 
         private void processRequest() {

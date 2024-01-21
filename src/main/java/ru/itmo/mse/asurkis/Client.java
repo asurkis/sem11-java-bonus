@@ -31,7 +31,6 @@ public class Client {
             requestBuilder.addX(x);
         ArrayMessage requestMessage = requestBuilder.build();
         byte[] requestBytes = requestMessage.toByteArray();
-        byte[] responseBytes = new byte[requestBytes.length];
 
         try (
                 Socket socket = new Socket(serverAddress, serverPort);
@@ -49,7 +48,7 @@ public class Client {
                 dos.flush();
 
                 int responseSize = dis.readInt();
-                assert responseSize == responseBytes.length;
+                byte[] responseBytes = new byte[responseSize];
                 for (int pos = 0; pos < responseSize; )
                     pos += dis.read(responseBytes, pos, responseSize - pos);
 

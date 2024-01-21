@@ -34,7 +34,7 @@ public class ServerUtil {
         ArrayMessage payload = ArrayMessage.parseFrom(buffer);
         payload = ServerUtil.processPayload(payload);
 
-        buffer = ServerUtil.ensureLimit(buffer, 4 + payload.getSerializedSize());
+        buffer = ensureLimit(buffer, 4 + payload.getSerializedSize());
         buffer.putInt(payload.getSerializedSize());
         CodedOutputStream cos = CodedOutputStream.newInstance(buffer);
         payload.writeTo(cos);

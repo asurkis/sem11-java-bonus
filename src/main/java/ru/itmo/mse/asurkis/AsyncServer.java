@@ -90,6 +90,10 @@ public class AsyncServer {
                 close();
                 return;
             }
+            if (buffer.remaining() > 0) {
+                channel.read(buffer, this, HEADER_HANDLER);
+                return;
+            }
             assert buffer.remaining() == 0;
 
             buffer.flip();
@@ -99,12 +103,20 @@ public class AsyncServer {
         }
 
         private void onReadArray() {
+            if (buffer.remaining() > 0) {
+                channel.read(buffer, this, BODY_HANDLER);
+                return;
+            }
             assert buffer.remaining() == 0;
             metrics.requestReceived = System.nanoTime();
             workerPool.submit(this::processRequest);
         }
 
         private void onWriteResponse() {
+            if (buffer.remaining() > 0) {
+                channel.write(buffer, this, RESPONSE_HANDLER);
+                return;
+            }
             assert buffer.remaining() == 0;
             metrics.responseSent = System.nanoTime();
             ServerUtil.printMetrics(metrics);

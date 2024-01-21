@@ -87,17 +87,7 @@ public class AsyncServer {
 
         private void processRequest() {
             try {
-                buffer.flip();
-                ArrayMessage payload = ArrayMessage.parseFrom(buffer);
-                payload = ServerUtil.processPayload(payload);
-
-                buffer = ServerUtil.ensureLimit(buffer, 4 + payload.getSerializedSize());
-                buffer.putInt(payload.getSerializedSize());
-                CodedOutputStream cos = CodedOutputStream.newInstance(buffer);
-                payload.writeTo(cos);
-                cos.flush();
-
-                buffer.flip();
+                buffer = ServerUtil.processPayload(buffer);
                 channel.write(buffer, this, RESPONSE_HANDLER);
             } catch (IOException e) {
                 throw new RuntimeException(e);

@@ -138,17 +138,7 @@ public class NonBlockingServer {
 
         private void processRequest() {
             try {
-                buffer.flip();
-                ArrayMessage payload = ArrayMessage.parseFrom(buffer);
-                payload = ServerUtil.processPayload(payload);
-
-                buffer = ServerUtil.ensureLimit(buffer, 4 + payload.getSerializedSize());
-                buffer.putInt(payload.getSerializedSize());
-                CodedOutputStream cos = CodedOutputStream.newInstance(buffer);
-                payload.writeTo(cos);
-                cos.flush();
-
-                buffer.flip();
+                buffer = ServerUtil.processPayload(buffer);
                 nextOp = this::start;
 
                 writeKey.interestOps(SelectionKey.OP_WRITE);

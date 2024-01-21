@@ -1,7 +1,10 @@
 package ru.itmo.mse.asurkis;
 
+import com.google.protobuf.CodedOutputStream;
+import com.google.protobuf.InvalidProtocolBufferException;
 import ru.itmo.mse.asurkis.Messages.ArrayMessage;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 
 /**
@@ -24,6 +27,21 @@ public class ServerUtil {
         }
         buf.limit(limit);
         return buf;
+    }
+
+    public static ByteBuffer processPayload(ByteBuffer buffer) throws IOException {
+        buffer.flip();
+        ArrayMessage payload = ArrayMessage.parseFrom(buffer);
+        payload = ServerUtil.processPayload(payload);
+
+        buffer = ServerUtil.ensureLimit(buffer, 4 + payload.getSerializedSize());
+        buffer.putInt(payload.getSerializedSize());
+        CodedOutputStream cos = CodedOutputStream.newInstance(buffer);
+        payload.writeTo(cos);
+        cos.flush();
+
+        buffer.flip();
+        return buffer;
     }
 
     /**

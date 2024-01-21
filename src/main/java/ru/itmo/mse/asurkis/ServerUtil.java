@@ -1,7 +1,6 @@
 package ru.itmo.mse.asurkis;
 
 import com.google.protobuf.CodedOutputStream;
-import com.google.protobuf.InvalidProtocolBufferException;
 import ru.itmo.mse.asurkis.Messages.ArrayMessage;
 
 import java.io.IOException;

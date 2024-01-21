@@ -21,7 +21,7 @@ public class BlockingServer {
     private final ExecutorService workerPool;
     private final int port;
 
-    private BlockingServer(int port) throws IOException {
+    public BlockingServer(int port) throws IOException {
         this.port = port;
         Runtime runtime = Runtime.getRuntime();
         int nProcessors = runtime.availableProcessors();
@@ -30,7 +30,7 @@ public class BlockingServer {
 
     private final AtomicInteger remainingClients = new AtomicInteger();
 
-    private void start(int nClients) throws IOException {
+    public void start(int nClients) throws IOException {
         remainingClients.set(nClients);
         try (ServerSocket serverSocket = new ServerSocket(port)) {
             for (int i = 0; i < nClients; i++) {

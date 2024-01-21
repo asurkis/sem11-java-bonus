@@ -18,7 +18,6 @@ public class NonBlockingServer {
     public static void main(String[] args) throws IOException {
         int port = Integer.parseInt(args[0]);
         int nClients = Integer.parseInt(args[1]);
-        System.out.println("processing_ns,response_ns");
         new NonBlockingServer(port).start(nClients);
     }
 
@@ -37,7 +36,8 @@ public class NonBlockingServer {
 
     private final AtomicInteger remainingClients = new AtomicInteger();
 
-    private void start(int nClients) throws IOException {
+    public void start(int nClients) throws IOException {
+        System.out.println("processing_ns,response_ns");
         remainingClients.set(nClients);
 
         Thread readThread = new Thread(this::runReadThread);

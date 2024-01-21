@@ -23,7 +23,7 @@ public class Client {
         this.serverPort = serverPort;
     }
 
-    private void execute(int payloadSize, long delayMs, int nRequests) throws InterruptedException, IOException {
+    public void execute(int payloadSize, long delayMs, int nRequests) throws InterruptedException, IOException {
         long start, finish;
 
         ArrayMessage.Builder requestBuilder = ArrayMessage.newBuilder();

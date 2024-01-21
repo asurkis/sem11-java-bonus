@@ -15,7 +15,6 @@ public class AsyncServer {
     public static void main(String[] args) throws IOException, ExecutionException, InterruptedException {
         int port = Integer.parseInt(args[0]);
         int nClients = Integer.parseInt(args[1]);
-        System.out.println("processing_ns,response_ns");
         new AsyncServer(port).start(nClients);
     }
 
@@ -24,7 +23,7 @@ public class AsyncServer {
     private final AsynchronousChannelGroup channelGroup;
 
 
-    private AsyncServer(int port) throws IOException {
+    public AsyncServer(int port) throws IOException {
         this.port = port;
         Runtime runtime = Runtime.getRuntime();
         int nProcessors = runtime.availableProcessors();
@@ -36,7 +35,8 @@ public class AsyncServer {
 
     private final AtomicInteger remainingClients = new AtomicInteger();
 
-    private void start(int nClients) throws IOException, ExecutionException, InterruptedException {
+    public void start(int nClients) throws IOException, ExecutionException, InterruptedException {
+        System.out.println("processing_ns,response_ns");
         remainingClients.set(nClients);
         try (AsynchronousServerSocketChannel serverSocketChannel = AsynchronousServerSocketChannel.open(channelGroup)) {
             serverSocketChannel.bind(new InetSocketAddress(port));

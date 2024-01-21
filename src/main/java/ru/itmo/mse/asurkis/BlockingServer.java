@@ -8,10 +8,14 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class BlockingServer {
     public static void main(String[] args) throws IOException {
-        new BlockingServer(4444).start();
+        int port = Integer.parseInt(args[0]);
+        int nClients = Integer.parseInt(args[1]);
+        System.out.println("processing_ns,response_ns");
+        new BlockingServer(port).start(nClients);
     }
 
     private final ExecutorService workerPool;
@@ -24,12 +28,14 @@ public class BlockingServer {
         workerPool = Executors.newFixedThreadPool(nProcessors);
     }
 
-    private void start() throws IOException {
+    private final AtomicInteger remainingClients = new AtomicInteger();
+
+    private void start(int nClients) throws IOException {
+        remainingClients.set(nClients);
         try (ServerSocket serverSocket = new ServerSocket(port)) {
-            while (true) {
+            for (int i = 0; i < nClients; i++) {
                 Socket socket = serverSocket.accept();
                 Thread thread = new Thread(() -> serveClientWrap(socket));
-                thread.setDaemon(true);
                 thread.start();
             }
         }
@@ -46,6 +52,8 @@ public class BlockingServer {
                 DataOutputStream dos = new DataOutputStream(bufferedOutputStream)
         ) {
             while (true) {
+                Metrics metrics = new Metrics();
+
                 int size;
                 try {
                     size = dis.readInt();
@@ -53,35 +61,45 @@ public class BlockingServer {
                     break;
                 }
 
-                byte[] buf = new byte[size];
-                for (int pos = 0; pos < size;)
-                    pos += dis.read(buf, pos, size - pos);
+                byte[] requestBuf = new byte[size];
+                for (int pos = 0; pos < size; )
+                    pos += dis.read(requestBuf, pos, size - pos);
 
-                workerPool.submit(() -> processAndScheduleResponse(buf, dos, responder));
+                metrics.requestReceived = System.nanoTime();
+
+                workerPool.submit(() -> processAndScheduleResponse(requestBuf, metrics, dos, responder));
             }
         } catch (IOException e) {
             throw new RuntimeException(e);
         } finally {
             responder.shutdown();
+
+            if (remainingClients.decrementAndGet() == 0)
+                workerPool.shutdown();
         }
     }
 
-    private void processAndScheduleResponse(byte[] buf, DataOutputStream dos, ExecutorService responder) {
+    private void processAndScheduleResponse(byte[] requestBuf, Metrics metrics, DataOutputStream dos, ExecutorService responder) {
         try {
-            ArrayMessage payload = ArrayMessage.parseFrom(buf);
+            metrics.processingStart = System.nanoTime();
+            ArrayMessage payload = ArrayMessage.parseFrom(requestBuf);
             payload = ServerUtil.processPayload(payload);
             byte[] responseBuf = payload.toByteArray();
-            responder.submit(() -> respond(responseBuf, dos));
+            metrics.processingFinish = System.nanoTime();
+            responder.submit(() -> respond(responseBuf, metrics, dos));
         } catch (InvalidProtocolBufferException e) {
             throw new RuntimeException(e);
         }
     }
 
-    private void respond(byte[] buf, DataOutputStream dos) {
+    private void respond(byte[] buf, Metrics metrics, DataOutputStream dos) {
         try {
             dos.writeInt(buf.length);
             dos.write(buf);
             dos.flush();
+
+            metrics.responseSent = System.nanoTime();
+            ServerUtil.printMetrics(metrics);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

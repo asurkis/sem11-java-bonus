@@ -1,8 +1,5 @@
 package ru.itmo.mse.asurkis;
 
-import com.google.protobuf.CodedOutputStream;
-import ru.itmo.mse.asurkis.Messages.ArrayMessage;
-
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -15,10 +12,14 @@ import java.util.Iterator;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class NonBlockingServer {
     public static void main(String[] args) throws IOException {
-        new NonBlockingServer(4444).start();
+        int port = Integer.parseInt(args[0]);
+        int nClients = Integer.parseInt(args[1]);
+        System.out.println("processing_ns,response_ns");
+        new NonBlockingServer(port).start(nClients);
     }
 
     private final ExecutorService workerPool;
@@ -34,20 +35,22 @@ public class NonBlockingServer {
         workerPool = Executors.newFixedThreadPool(nProcessors);
     }
 
-    private void start() throws IOException {
+    private final AtomicInteger remainingClients = new AtomicInteger();
+
+    private void start(int nClients) throws IOException {
+        remainingClients.set(nClients);
+
         Thread readThread = new Thread(this::runReadThread);
-        readThread.setDaemon(true);
         readThread.start();
 
         Thread writeThread = new Thread(this::runWriteThread);
-        writeThread.setDaemon(true);
         writeThread.start();
 
         try (
                 ServerSocketChannel serverSocketChannel = ServerSocketChannel.open()
         ) {
             serverSocketChannel.bind(new InetSocketAddress(port));
-            while (true) {
+            for (int i = 0; i < nClients; i++) {
                 SocketChannel channel = serverSocketChannel.accept();
                 Client client = new Client(channel);
                 client.start();
@@ -57,7 +60,7 @@ public class NonBlockingServer {
 
     private void runReadThread() {
         try {
-            while (true) {
+            while (remainingClients.get() > 0) {
                 readSelector.select();
                 Set<SelectionKey> selectedKeys = readSelector.selectedKeys();
                 Iterator<SelectionKey> iter = selectedKeys.iterator();
@@ -75,7 +78,7 @@ public class NonBlockingServer {
 
     private void runWriteThread() {
         try {
-            while (true) {
+            while (remainingClients.get() > 0) {
                 writeSelector.select();
                 Set<SelectionKey> selectedKeys = writeSelector.selectedKeys();
                 Iterator<SelectionKey> iter = selectedKeys.iterator();
@@ -95,6 +98,7 @@ public class NonBlockingServer {
         private final SocketChannel channel;
         private final SelectionKey readKey;
         private final SelectionKey writeKey;
+        private final Metrics metrics = new Metrics();
 
         private ByteBuffer buffer = ByteBuffer.allocate(ServerUtil.START_CAPACITY_BYTES);
         private Runnable nextOp = null;
@@ -112,10 +116,14 @@ public class NonBlockingServer {
             readKey.cancel();
             writeKey.cancel();
             channel.close();
+            if (remainingClients.decrementAndGet() == 0) {
+                readSelector.wakeup();
+                writeSelector.wakeup();
+                workerPool.shutdown();
+            }
         }
 
         private void start() {
-            writeKey.interestOps(0);
             buffer.clear();
             buffer.limit(4);
             nextOp = this::onReadSize;
@@ -133,13 +141,23 @@ public class NonBlockingServer {
         private void onReadArray() {
             readKey.interestOps(0);
             nextOp = null;
+            metrics.requestReceived = System.nanoTime();
             workerPool.submit(this::processRequest);
+        }
+
+        private void onWrite() {
+            writeKey.interestOps(0);
+            metrics.responseSent = System.nanoTime();
+            ServerUtil.printMetrics(metrics);
+            start();
         }
 
         private void processRequest() {
             try {
+                metrics.processingStart = System.nanoTime();
                 buffer = ServerUtil.processPayload(buffer);
-                nextOp = this::start;
+                metrics.processingFinish = System.nanoTime();
+                nextOp = this::onWrite;
 
                 writeKey.interestOps(SelectionKey.OP_WRITE);
                 writeSelector.wakeup();

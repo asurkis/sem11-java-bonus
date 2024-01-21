@@ -75,4 +75,12 @@ public class ServerUtil {
             }
         }
     }
+
+    public static void printMetrics(Metrics metrics) {
+        synchronized (System.out) {
+            System.out.printf("%d,%d\n",
+                    metrics.processingFinish - metrics.processingStart,
+                    metrics.responseSent - metrics.requestReceived);
+        }
+    }
 }

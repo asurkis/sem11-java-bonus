@@ -6,11 +6,24 @@ import java.io.*;
 import java.net.Socket;
 
 public class Client {
-    public static void main(String[] args) throws InterruptedException {
-        new Client().execute(4 * 1024, 10, 10);
+    public static void main(String[] args) throws InterruptedException, IOException {
+        String serverAddress = args[0];
+        int serverPort = Integer.parseInt(args[1]);
+        int payloadSize = Integer.parseInt(args[2]);
+        long delayMs = Long.parseLong(args[3]);
+        int nRequests = Integer.parseInt(args[4]);
+        new Client(serverAddress, serverPort).execute(payloadSize, delayMs, nRequests);
     }
 
-    private void execute(int payloadSize, long delayMs, int nRequests) throws InterruptedException {
+    private final String serverAddress;
+    private final int serverPort;
+
+    public Client(String serverAddress, int serverPort) {
+        this.serverAddress = serverAddress;
+        this.serverPort = serverPort;
+    }
+
+    private void execute(int payloadSize, long delayMs, int nRequests) throws InterruptedException, IOException {
         long start, finish;
 
         ArrayMessage.Builder requestBuilder = ArrayMessage.newBuilder();
@@ -21,7 +34,7 @@ public class Client {
         byte[] responseBytes = new byte[requestBytes.length];
 
         try (
-                Socket socket = new Socket("localhost", 4444);
+                Socket socket = new Socket(serverAddress, serverPort);
                 InputStream inputStream = socket.getInputStream();
                 OutputStream outputStream = socket.getOutputStream();
                 BufferedInputStream bufferedInputStream = new BufferedInputStream(inputStream);
@@ -29,7 +42,7 @@ public class Client {
                 DataInputStream dis = new DataInputStream(bufferedInputStream);
                 DataOutputStream dos = new DataOutputStream(bufferedOutputStream)
         ) {
-            start = System.currentTimeMillis();
+            start = System.nanoTime();
             for (int i = 0; i < nRequests; i++) {
                 dos.writeInt(requestBytes.length);
                 dos.write(requestBytes);
@@ -44,14 +57,16 @@ public class Client {
                 assert responseMessage.getXCount() == payloadSize;
                 for (int j = 0; j < payloadSize; j++)
                     assert responseMessage.getX(j) == j + 1;
+
+                // Более точного метода обеспечить ожидание всё равно нет,
+                // ScheduledExecutorService даёт точно такие же гарантии
+                Thread.sleep(delayMs);
             }
-            finish = System.currentTimeMillis();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+            finish = System.nanoTime();
         }
 
         System.out.println(finish - start);
-        System.out.println((double) (finish - start) / nRequests);
-        System.out.println((double) (finish - start) / nRequests - delayMs);
+        // System.out.println((double) (finish - start) / nRequests);
+        // System.out.println((double) (finish - start) / nRequests - delayMs);
     }
 }
